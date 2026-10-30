@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function mail() { return request.auth.token.email; }
+    // Keep this list identical to VITE_ADMIN_EMAILS in .env
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && mail() in ['you@gmail.com'];
+    }
+
+    match /services/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /bookings/{id} {
+      // addDoc() generates the booking document ID on the client, so rules
+      // must not compare that unknown ID with a bookingId field.
+      allow create: if signedIn()
+        && request.resource.data.email == mail()
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.serviceId is string
+        && request.resource.data.serviceName is string
+        && request.resource.data.userName is string
+        && request.resource.data.phone is string
+        && request.resource.data.address is string
+        && request.resource.data.date is string
+        && request.resource.data.guestCount is int
+        && request.resource.data.guestCount >= 1
+        && request.resource.data.guestCount <= 6;
+      allow read: if isAdmin() || (signedIn() && resource.data.email == mail());
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (signedIn() && resource.data.email == mail());
+    }
+
+    // Publicly readable guest reviews; only the traveller with a completed
+    // booking for this exact service can create one review for that booking.
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && reviewId == request.resource.data.bookingId
+        && request.resource.data.email == mail()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && exists(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId))
+        && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.email == mail()
+        && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.serviceId == request.resource.data.serviceId
+        && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.status == 'Completed'
+        && !exists(/databases/$(database)/documents/reviews/$(request.resource.data.bookingId));
+      allow update, delete: if isAdmin();
+    }
+
+    // Community stories are public after publishing. Authors must be signed in.
+    match /posts/{postId} {
+      allow read: if resource.data.status == 'Published' || isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.status == 'Published'
+        && request.resource.data.title is string
+        && request.resource.data.story is string
+        && request.resource.data.imageUrls is list
+        && request.resource.data.imageUrls.size() <= 5;
+      allow update, delete: if isAdmin();
+    }
+  }
+}

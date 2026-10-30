@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /my-bookings
+Disallow: /manage-bookings
+Disallow: /add-service
+Disallow: /order-placed
+
+Sitemap: https://visit-nature-85ca3.web.app/sitemap.xml
